@@ -3,17 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Paper Agent 2026 | 完整大纲修复版</title>
+    <title>Paper Agent 2026 | 极清渲染与 Markdown 版</title>
     
-    <!-- 引入 Vue 3 和 Tailwind CSS -->
+    <!-- 引入 Vue 3, Tailwind CSS -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 引入 PDF.js 核心库与官方 CSS -->
+    <!-- 引入 PDF.js 核心库 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
     
-    <!-- 引入字体与图标 -->
+    <!-- 1. 优化点：引入 Markdown 解析库 marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
@@ -39,18 +41,30 @@
         .pdf-page-container { 
             position: relative; 
             margin: 0 auto 20px auto; 
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
             background-color: white; 
         }
         .textLayer { opacity: 1 !important; }
         .textLayer span { color: transparent !important; }
-        .textLayer ::selection { background: rgba(253, 186, 116, 0.4); color: transparent; }
+        .textLayer ::selection { background: rgba(223, 122, 56, 0.3); color: transparent; }
+
+        /* 2. 优化点：Markdown 样式渲染增强 */
+        .markdown-body { line-height: 1.6; word-wrap: break-word; }
+        .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; margin-top: 1em; margin-bottom: 0.5em; font-weight: 600; }
+        .markdown-body h3 { margin-top: 0.8em; font-weight: 600; }
+        .markdown-body p { margin-bottom: 0.8em; }
+        .markdown-body ul, .markdown-body ol { padding-left: 1.5em; margin-bottom: 0.8em; list-style-type: disc; }
+        .markdown-body code { background: rgba(0,0,0,0.05); padding: 0.2em 0.4em; border-radius: 3px; font-family: monospace; font-size: 90%; }
+        .markdown-body pre { background: #2d2d2d; color: #f8f8f2; padding: 1em; border-radius: 6px; overflow: auto; margin-bottom: 1em; }
+        .markdown-body blockquote { border-left: 4px solid #df7a38; padding-left: 1em; color: #666; font-style: italic; margin: 1em 0; }
+        .markdown-body table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
+        .markdown-body table th, .markdown-body table td { border: 1px solid #dfe2e5; padding: 6px 13px; }
     </style>
 </head>
 <body class="font-sans text-gray-800 h-screen w-screen overflow-hidden bg-white">
     <div id="app" class="flex h-full w-full flex-col md:flex-row relative">
         
-        <!-- ================= 左栏：导航与大纲 ================= -->
+        <!-- 左栏：导航与大纲 -->
         <div class="bg-navBg flex flex-col hidden md:flex shrink-0 transition-all" :style="{ width: leftWidth + 'px' }">
             <div class="p-4 border-b">
                 <h1 class="font-bold text-lg truncate" :title="paperTitle">{{ paperTitle || '未上传论文' }}</h1>
@@ -68,9 +82,7 @@
             
             <div class="p-4 flex-1 overflow-y-auto">
                 <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">章节大纲 (支持跳转)</h3>
-                
                 <ul v-if="outline.length > 0" class="text-sm space-y-2">
-                    <!-- 动态绑定 paddingLeft 以支持缩进（层级显示） -->
                     <li v-for="(item, idx) in outline" :key="idx" 
                         class="cursor-pointer hover:text-blue-600 truncate transition-colors flex items-center" 
                         :style="{ paddingLeft: ((item.level > 1 ? item.level - 1 : 0) * 14) + 'px' }"
@@ -81,7 +93,7 @@
                 </ul>
                 <div v-else class="text-sm text-gray-400 italic">
                     <div v-if="isUploading"><i class="fas fa-spinner fa-spin mr-1"></i>正在解析文档...</div>
-                    <div v-else-if="isGeneratingOutline"><i class="fas fa-robot fa-spin mr-1"></i>AI 正在通读全文推断大纲...</div>
+                    <div v-else-if="isGeneratingOutline"><i class="fas fa-robot fa-spin mr-1"></i>AI 正在推读全文推断大纲...</div>
                     <div v-else>上传PDF后自动生成完整大纲</div>
                 </div>
             </div>
@@ -89,17 +101,18 @@
 
         <div class="resizer hidden md:block" @mousedown="startDrag('left')"></div>
 
-        <!-- ================= 中栏：原版PDF渲染区 ================= -->
+        <!-- 中栏：原版PDF渲染区 (高清晰度优化) -->
         <div class="bg-paper font-lora flex-1 flex flex-col relative overflow-hidden text-lg">
             <div class="flex-1 overflow-y-auto p-4 md:p-8 relative scroll-smooth bg-gray-100" id="pdf-container">
                 <div v-if="!pdfDoc" class="flex flex-col items-center justify-center h-full text-gray-400">
                     <i class="fas fa-file-pdf text-6xl mb-4 text-gray-300"></i>
                     <p class="font-sans">请点击左侧按钮上传 PDF 文件</p>
-                    <p class="text-sm mt-2">支持精准划线、AI翻译、自动提取完整大纲</p>
+                    <p class="text-sm mt-2">支持高清物理像素渲染</p>
                 </div>
                 
                 <div v-for="pageNum in totalPages" :key="pageNum" :id="'page-wrapper-' + pageNum" class="pdf-page-container">
-                    <canvas :id="'page-canvas-' + pageNum" class="block"></canvas>
+                    <!-- Canvas 高清渲染 -->
+                    <canvas :id="'page-canvas-' + pageNum" class="block mx-auto"></canvas>
                     <div :id="'text-layer-' + pageNum" class="textLayer"></div>
                 </div>
             </div>
@@ -116,7 +129,7 @@
 
         <div class="resizer hidden md:block" @mousedown="startDrag('right')"></div>
 
-        <!-- ================= 右栏：AI交互与批注 ================= -->
+        <!-- 右栏：AI交互与批注 (Markdown 渲染优化) -->
         <div class="bg-white flex flex-col hidden md:flex shrink-0 transition-all" :style="{ width: rightWidth + 'px' }">
             <div class="flex border-b text-sm font-medium shrink-0">
                 <button @click="activeTab = 'ai'" :class="activeTab==='ai' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="flex-1 py-3 bg-gray-50 hover:bg-gray-100">全知 AI 助手</button>
@@ -129,18 +142,19 @@
                         <div class="inline-block p-3 rounded-lg max-w-[90%] shadow-sm text-left"
                              :class="msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'">
                             <p v-if="msg.context" class="text-xs opacity-80 border-l-2 border-white/50 pl-2 mb-2 italic line-clamp-3">划线内容: "{{msg.context}}"</p>
-                            <div v-html="formatMsg(msg.content)" class="leading-relaxed break-words"></div>
+                            <!-- 3. 优化点：AI消息内容使用 markdown-body -->
+                            <div v-html="formatMsg(msg.content)" class="markdown-body leading-relaxed break-words"></div>
                         </div>
                     </div>
                     <div v-if="aiLoading" class="text-left"><span class="inline-block p-3 bg-gray-100 rounded-lg text-gray-500 animate-pulse"><i class="fas fa-circle-notch fa-spin"></i> AI 思考中...</span></div>
                 </div>
                 <div class="p-3 border-t bg-gray-50 shrink-0">
-                    <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" placeholder="在此向 AI 提问 (已注入全文上下文)..." class="w-full bg-white border border-gray-300 rounded p-2 text-sm outline-none focus:border-blue-500 resize-none h-20 shadow-inner"></textarea>
+                    <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" placeholder="在此向 AI 提问 (Enter 发送)..." class="w-full bg-white border border-gray-300 rounded p-2 text-sm outline-none focus:border-blue-500 resize-none h-20 shadow-inner"></textarea>
                 </div>
             </div>
 
             <div v-show="activeTab === 'note'" class="flex-1 overflow-y-auto p-4 space-y-4">
-                <div v-if="annotations.length === 0" class="text-center text-gray-400 text-sm mt-10">暂无批注，请在原版PDF划线添加</div>
+                <div v-if="annotations.length === 0" class="text-center text-gray-400 text-sm mt-10">暂无批注</div>
                 <div v-for="anno in annotations" :key="anno.id" class="relative group border-l-4 border-highlight bg-orange-50 p-3 rounded-r-md shadow-sm transition-all hover:shadow">
                     <p class="text-sm font-lora text-gray-700 italic mb-2">"{{ anno.text }}"</p>
                     <textarea v-model="anno.note" @change="saveData" placeholder="输入批注想法..." class="w-full text-sm bg-white/60 border border-orange-200 rounded p-2 outline-none focus:bg-white resize-none"></textarea>
@@ -151,23 +165,23 @@
             </div>
         </div>
 
-        <!-- ================= API 配置 Modal ================= -->
+        <!-- API 配置 Modal -->
         <div v-if="showApiModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div class="bg-white w-[420px] rounded-lg shadow-xl p-6 font-sans">
-                <h2 class="text-lg font-bold mb-4">API 引擎配置</h2>
+                <h2 class="text-lg font-bold mb-4">AI 引擎配置</h2>
                 <div class="space-y-4 text-sm">
                     <div>
-                        <label class="block text-gray-700 mb-1">快捷预设模型(推荐选用长文本模型)</label>
+                        <label class="block text-gray-700 mb-1">快捷预设模型</label>
                         <select v-model="apiConfig.preset" @change="applyPreset" class="w-full border p-2 rounded focus:outline-blue-500 bg-gray-50">
                             <option value="deepseek">DeepSeek (性价比最高)</option>
-                            <option value="kimi">Moonshot Kimi (长文本极佳)</option>
+                            <option value="kimi">Moonshot Kimi</option>
                             <option value="openai">OpenAI (GPT-4o)</option>
                             <option value="custom">自定义格式</option>
                         </select>
                     </div>
                     <div><label class="block text-gray-700 mb-1">API Base URL</label><input v-model="apiConfig.baseUrl" type="text" class="w-full border p-2 rounded focus:outline-blue-500"></div>
                     <div><label class="block text-gray-700 mb-1">Model Name</label><input v-model="apiConfig.model" type="text" class="w-full border p-2 rounded focus:outline-blue-500"></div>
-                    <div><label class="block text-gray-700 mb-1">API Key (密钥仅保存在本地)</label><input v-model="apiConfig.apiKey" type="password" placeholder="sk-..." class="w-full border p-2 rounded focus:outline-blue-500"></div>
+                    <div><label class="block text-gray-700 mb-1">API Key</label><input v-model="apiConfig.apiKey" type="password" placeholder="sk-..." class="w-full border p-2 rounded focus:outline-blue-500"></div>
                 </div>
                 <div class="mt-6 flex justify-end space-x-3">
                     <button @click="showApiModal = false" class="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded">取消</button>
@@ -200,7 +214,7 @@
                 const annotations = ref([]);
 
                 const showApiModal = ref(false);
-                const aiMessages = ref([{ role: 'assistant', content: '您好！上传 PDF 后，您可以：\n1. 在中栏精准划线，进行翻译或批注；\n2. 我会自动读取全篇内容，您可直接向我提问论文细节。' }]);
+                const aiMessages = ref([{ role: 'assistant', content: '您好！我是您的全知阅读助手。我可以帮您总结论文、翻译划线内容。' }]);
                 const aiInput = ref('');
                 const aiLoading = ref(false);
 
@@ -251,10 +265,8 @@
                         pdfDoc.value = pdf;
                         totalPages.value = pdf.numPages;
 
-                        // 开始渲染页面并提取文字
                         await renderAllPagesAndExtractText(pdf);
 
-                        // 优先读取原生目录，无目录则由 AI 通读全文生成
                         const rawOutline = await pdf.getOutline();
                         const parsedOutline = await parseOutlineWithPages(rawOutline, pdf, 1);
                         
@@ -262,10 +274,7 @@
                             outline.value = parsedOutline;
                         } else if (apiConfig.apiKey) {
                             generateOutlineByAI();
-                        } else {
-                            outline.value =[{ title: '未提取到目录，请配置API后重新上传以生成', page: 1, level: 1 }];
                         }
-
                     } catch (error) {
                         alert("解析失败: " + error.message);
                     } finally {
@@ -282,20 +291,21 @@
                             let dest = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest;
                             if (dest) pageNum = (await pdf.getPageIndex(dest[0])) + 1;
                         } catch(e) {}
-                        
                         result.push({ title: item.title, page: pageNum, level: level });
-                        if (item.items && item.items.length > 0) {
-                            result = result.concat(await parseOutlineWithPages(item.items, pdf, level + 1));
-                        }
+                        if (item.items && item.items.length > 0) result = result.concat(await parseOutlineWithPages(item.items, pdf, level + 1));
                     }
                     return result;
                 };
 
+                // ================= 优化点：高清 PDF 渲染 =================
                 const renderAllPagesAndExtractText = async (pdf) => {
                     let extractedText = '';
+                    const dpr = window.devicePixelRatio || 1; // 获取设备像素比
+
                     for (let num = 1; num <= pdf.numPages; num++) {
                         const page = await pdf.getPage(num);
-                        const viewport = page.getViewport({ scale: 1.5 });
+                        const baseScale = 1.5; // 基础缩放因子
+                        const viewport = page.getViewport({ scale: baseScale });
 
                         const wrapper = document.getElementById(`page-wrapper-${num}`);
                         if(!wrapper) continue;
@@ -303,9 +313,20 @@
                         wrapper.style.height = viewport.height + 'px';
 
                         const canvas = document.getElementById(`page-canvas-${num}`);
-                        const context = canvas.getContext('2d');
-                        canvas.height = viewport.height; canvas.width = viewport.width;
-                        await page.render({ canvasContext: context, viewport }).promise;
+                        const context = canvas.getContext('2d', { alpha: false }); // 优化渲染性能
+
+                        // 核心：设置 Canvas 物理像素尺寸
+                        canvas.width = Math.floor(viewport.width * dpr);
+                        canvas.height = Math.floor(viewport.height * dpr);
+                        
+                        // 核心：设置 Canvas CSS 尺寸
+                        canvas.style.width = viewport.width + 'px';
+                        canvas.style.height = viewport.height + 'px';
+
+                        // 核心：缩放绘图上下文以匹配物理像素
+                        context.scale(dpr, dpr);
+
+                        await page.render({ canvasContext: context, viewport: viewport }).promise;
 
                         const textContent = await page.getTextContent();
                         const textLayerDiv = document.getElementById(`text-layer-${num}`);
@@ -321,58 +342,23 @@
                             textDivs:[]
                         }).promise;
 
-                        // 注入 [Page num] 标识符给 AI 推断页码用
                         const pageString = textContent.items.map(s => s.str).join(' ');
                         extractedText += `\n\n--- [Page ${num}] ---\n${pageString}`;
                     }
                     fullDocumentContext.value = extractedText;
                 };
 
-                // ================= 修复核心：大模型解析全篇大纲 =================
                 const generateOutlineByAI = async () => {
                     isGeneratingOutline.value = true;
                     try {
-                        // 【修复1】大幅放宽截取范围至 100,000 字符（约能涵盖几十页），确保 AI 能读到文章末尾的 Conclusion/References
                         const introText = fullDocumentContext.value.substring(0, 100000); 
-                        
-                        // 【修复2】强化 Prompt：要求提取所有主要章节及子章节，并输出层级结构
-                        const prompt = `你是一个专业的学术文献助手。请仔细阅读以下整篇论文的内容，为用户提取出详细、完整的章节目录大纲。
-要求如下：
-1. 必须覆盖全文（从 Abstract 到 Conclusion / References）。
-2. 识别出一级标题和二级标题。
-3. 根据文本中 "[Page X]" 的标记，推断该章节位于哪一页。
-4. 必须以严格的 JSON 数组格式返回。
-
-JSON 字段要求：
-- "title": 标题名称（保留原序号，如 "1. Introduction" 或 "3.1 Datasets"）
-- "page": 页码（数字，如 1）
-- "level": 层级（数字，1 代表一级标题，2 代表二级子标题）
-
-输出示例：[
-  {"title": "Abstract", "page": 1, "level": 1},
-  {"title": "1. Introduction", "page": 1, "level": 1},
-  {"title": "2. Related Work", "page": 2, "level": 1},
-  {"title": "2.1 Deep Learning", "page": 2, "level": 2}
-]
-
-请不要返回任何Markdown代码块标识符（如 \`\`\`json ），不要输出其他废话说明，只输出合法 JSON 数组。
-
-论文文本：\n${introText}`;
-                        
-                        const res = await callAI(prompt, "你是一个只输出严格 JSON 数组格式大纲的机器人。");
-                        
-                        // 【修复3】更健壮的 JSON 解析正则与清理，防止带有 markdown tags 导致报错
+                        const prompt = `分析以下论文内容，提取章节大纲，以 JSON 数组格式返回：[{"title": "...", "page": 1, "level": 1}]。内容：\n${introText}`;
+                        const res = await callAI(prompt, "你是一个只输出 JSON 数组的机器人。");
                         let cleanJson = res.replace(/```json/gi, '').replace(/```/g, '').trim();
                         const jsonMatch = cleanJson.match(/\[[\s\S]*\]/);
-                        
-                        if (jsonMatch) {
-                            outline.value = JSON.parse(jsonMatch[0]);
-                        } else {
-                            throw new Error("JSON 解析失败: " + cleanJson);
-                        }
+                        if (jsonMatch) outline.value = JSON.parse(jsonMatch[0]);
                     } catch (e) {
-                        console.error("AI 大纲生成失败", e);
-                        outline.value =[{ title: 'AI 提取全篇大纲失败，请重传重试', page: 1, level: 1 }];
+                        outline.value =[{ title: '大纲生成失败', page: 1, level: 1 }];
                     } finally {
                         isGeneratingOutline.value = false;
                     }
@@ -387,18 +373,14 @@ JSON 字段要求：
                     setTimeout(() => {
                         const selection = window.getSelection();
                         const text = selection.toString().trim();
-                        
                         if (text.length > 0 && selection.anchorNode && document.getElementById('pdf-container').contains(selection.anchorNode)) {
                             selectedText.value = text;
                             const range = selection.getRangeAt(0);
                             const rect = range.getBoundingClientRect(); 
-                            
                             popover.x = rect.left + (rect.width / 2);
                             popover.y = rect.top;
                             popover.show = true;
-                        } else {
-                            popover.show = false;
-                        }
+                        } else { popover.show = false; }
                     }, 50);
                 };
 
@@ -407,29 +389,29 @@ JSON 字段要求：
                 const saveData = () => localStorage.setItem('paper_agent_annos', JSON.stringify(annotations.value));
 
                 const scrollToBottom = () => nextTick(() => { const box = document.getElementById('chat-box'); if(box) box.scrollTop = box.scrollHeight; });
-                const formatMsg = (text) => text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+                // ================= 优化点：使用 marked.js 渲染 Markdown =================
+                const formatMsg = (text) => {
+                    if (!text) return "";
+                    // marked.parse 渲染 markdown
+                    return marked.parse(text);
+                };
 
                 const callAI = async (prompt, systemRole = "你是一个专业的学术论文助手。") => {
-                    if (!apiConfig.apiKey) {
-                        alert("请先配置 API Key！"); showApiModal.value = true; throw new Error("No API Key");
-                    }
-                    
+                    if (!apiConfig.apiKey) { alert("请配置 API Key！"); showApiModal.value = true; return ""; }
                     let systemContent = systemRole;
                     if (fullDocumentContext.value && systemRole.includes("学术")) {
                         systemContent += `\n\n【论文参考全文】：\n${fullDocumentContext.value.substring(0, 40000)}`;
                     }
-
                     const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
                         body: JSON.stringify({
                             model: apiConfig.model,
                             messages:[ { role: 'system', content: systemContent }, { role: 'user', content: prompt } ],
-                            temperature: 0.1 // 降低 temperature 增加大纲提取的确定性
+                            temperature: 0.1
                         })
                     });
-
-                    if (!response.ok) throw new Error("API 请求失败");
                     const data = await response.json();
                     return data.choices[0].message.content;
                 };
@@ -439,22 +421,20 @@ JSON 字段要求：
                     popover.show = false; activeTab.value = 'ai';
                     aiMessages.value.push({ role: 'user', content: '请翻译划线内容。', context: text });
                     aiLoading.value = true; scrollToBottom();
-
                     try {
-                        const reply = await callAI(`结合全文语境，将以下学术片段翻译为精准流畅的中文：\n"${text}"`);
+                        const reply = await callAI(`翻译以下学术片段为中文：\n"${text}"`);
                         aiMessages.value.push({ role: 'assistant', content: reply });
-                    } catch (e) { aiMessages.value.push({ role: 'assistant', content: '翻译失败，请检查API配置。' }); }
+                    } catch (e) { aiMessages.value.push({ role: 'assistant', content: '翻译失败。' }); }
                     aiLoading.value = false; scrollToBottom();
                 };
 
                 const aiAsk = async () => {
                     const text = selectedText.value;
                     popover.show = false; activeTab.value = 'ai';
-                    aiMessages.value.push({ role: 'user', content: '请解释这段内容。', context: text });
+                    aiMessages.value.push({ role: 'user', content: '请详细解释这段内容。', context: text });
                     aiLoading.value = true; scrollToBottom();
-
                     try {
-                        const reply = await callAI(`作为AI学术助手，请结合论文全文，详细解释以下划线片段的概念，并说明它在文中的作用：\n"${text}"`);
+                        const reply = await callAI(`结合全文详细解释以下片段：\n"${text}"`);
                         aiMessages.value.push({ role: 'assistant', content: reply });
                     } catch (e) { aiMessages.value.push({ role: 'assistant', content: '请求失败。' }); }
                     aiLoading.value = false; scrollToBottom();
@@ -465,11 +445,10 @@ JSON 字段要求：
                     const msg = aiInput.value; aiInput.value = '';
                     aiMessages.value.push({ role: 'user', content: msg });
                     aiLoading.value = true; scrollToBottom();
-
                     try {
                         const reply = await callAI(`用户提问：${msg}`);
                         aiMessages.value.push({ role: 'assistant', content: reply });
-                    } catch (e) { aiMessages.value.push({ role: 'assistant', content: '请求失败，请检查网络或API Key。' }); }
+                    } catch (e) { aiMessages.value.push({ role: 'assistant', content: '请求失败。' }); }
                     aiLoading.value = false; scrollToBottom();
                 };
 
