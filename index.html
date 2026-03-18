@@ -3,465 +3,820 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Paper Agent 2026 | 极清渲染与 Markdown 版</title>
-    
-    <!-- 引入 Vue 3, Tailwind CSS -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <title>本地 AI 学术文献阅读器</title>
+
+    <!-- CDN 依赖 -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     
-    <!-- 引入 PDF.js 核心库 -->
+    <!-- PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
-    
-    <!-- 1. 优化点：引入 Markdown 解析库 marked.js -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: { paper: '#F9F8F6', navBg: '#F3F4F6', highlight: '#FDBA74' },
-                    fontFamily: { lora:['Lora', 'serif'], sans:['"IBM Plex Sans"', 'sans-serif'] }
-                }
-            }
-        }
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
+    
+    <!-- Marked & KaTeX -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+    <!-- 全局样式 -->
     <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        .resizer { width: 4px; cursor: col-resize; background-color: #e5e7eb; transition: background-color 0.2s; z-index: 50; }
-        .resizer:hover, .resizer.active { background-color: #fb923c; }
+        ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
+        .pdf-page-container { position: relative; margin: 0 auto 20px auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); background: white; }
         
-        .pdf-page-container { 
-            position: relative; 
-            margin: 0 auto 20px auto; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
-            background-color: white; 
+        .textLayer {
+            position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+            overflow: hidden; opacity: 1 !important; line-height: 1;
+            text-size-adjust: none; transform-origin: 0 0; z-index: 10;
         }
-        .textLayer { opacity: 1 !important; }
-        .textLayer span { color: transparent !important; }
-        .textLayer ::selection { background: rgba(223, 122, 56, 0.3); color: transparent; }
+        .textLayer span, .textLayer br {
+            color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%;
+        }
+        .textLayer ::selection { background: rgba(37, 99, 235, 0.3) !important; color: transparent !important; }
+        .textLayer ::-moz-selection { background: rgba(37, 99, 235, 0.3) !important; color: transparent !important; }
 
-        /* 2. 优化点：Markdown 样式渲染增强 */
-        .markdown-body { line-height: 1.6; word-wrap: break-word; }
-        .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; margin-top: 1em; margin-bottom: 0.5em; font-weight: 600; }
-        .markdown-body h3 { margin-top: 0.8em; font-weight: 600; }
-        .markdown-body p { margin-bottom: 0.8em; }
-        .markdown-body ul, .markdown-body ol { padding-left: 1.5em; margin-bottom: 0.8em; list-style-type: disc; }
-        .markdown-body code { background: rgba(0,0,0,0.05); padding: 0.2em 0.4em; border-radius: 3px; font-family: monospace; font-size: 90%; }
-        .markdown-body pre { background: #2d2d2d; color: #f8f8f2; padding: 1em; border-radius: 6px; overflow: auto; margin-bottom: 1em; }
-        .markdown-body blockquote { border-left: 4px solid #df7a38; padding-left: 1em; color: #666; font-style: italic; margin: 1em 0; }
-        .markdown-body table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
-        .markdown-body table th, .markdown-body table td { border: 1px solid #dfe2e5; padding: 6px 13px; }
+        .prose pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5em; margin-bottom: 0.5em;}
+        .prose p { margin-bottom: 0.5em; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
     </style>
 </head>
-<body class="font-sans text-gray-800 h-screen w-screen overflow-hidden bg-white">
-    <div id="app" class="flex h-full w-full flex-col md:flex-row relative">
+<body>
+    <!-- 移除了原有的外层 mousemove 事件，改用更纯粹的容器 -->
+    <div id="app" class="flex h-screen w-screen bg-[#F9F8F6] text-gray-800">
         
-        <!-- 左栏：导航与大纲 -->
-        <div class="bg-navBg flex flex-col hidden md:flex shrink-0 transition-all" :style="{ width: leftWidth + 'px' }">
-            <div class="p-4 border-b">
-                <h1 class="font-bold text-lg truncate" :title="paperTitle">{{ paperTitle || '未上传论文' }}</h1>
-                <p class="text-xs text-gray-500 mt-1"><i class="fas fa-book-open"></i> 原文结构增强版</p>
-                <div class="mt-4 flex gap-2">
-                    <button @click="triggerUpload" class="bg-blue-600 text-white text-sm px-3 py-1.5 rounded shadow hover:bg-blue-700 transition w-full">
-                        <i class="fas fa-upload"></i> 上传 PDF
-                    </button>
-                    <button @click="showApiModal = true" class="bg-gray-200 text-gray-700 text-sm px-3 py-1.5 rounded hover:bg-gray-300 transition">
-                        <i class="fas fa-cog"></i>
+        <!-- ==================== 左栏：大纲与导航 ==================== -->
+        <div :style="{ width: leftWidth + 'px' }" class="flex flex-col bg-white border-r border-gray-200 shadow-sm flex-shrink-0 relative h-full">
+            <div class="h-14 border-b flex items-center justify-between px-4 bg-gray-50 flex-shrink-0">
+                <span class="font-bold text-gray-700 flex items-center gap-2">
+                    <i class="fa-solid fa-book-open text-blue-500"></i> 文献导航
+                </span>
+                <button @click="showSettings = true" class="text-gray-500 hover:text-blue-600 transition" title="API 设置">
+                    <i class="fa-solid fa-cog"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 text-sm">
+                <div v-if="outlines.length > 0">
+                    <div v-for="(item, idx) in outlines" :key="idx" 
+                         @click="scrollToPage(item.destPage)"
+                         class="cursor-pointer py-1.5 hover:text-blue-600 truncate border-l-2 border-transparent hover:border-blue-500 pl-2 mb-1"
+                         :style="{ paddingLeft: `${(item.depth || 0) * 12 + 8}px` }">
+                        {{ item.title }}
+                    </div>
+                </div>
+                <div v-else-if="pdfDoc" class="text-center text-gray-400 mt-10 space-y-3">
+                    <i class="fa-solid fa-list-ul text-3xl mb-2"></i>
+                    <p>文档未自带书签大纲</p>
+                    <button @click="generateAIOutline(false)" :disabled="isGeneratingOutline" class="px-4 py-2 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition w-full shadow-sm text-xs font-bold border border-blue-200 disabled:opacity-50">
+                        <span v-if="isGeneratingOutline"><i class="fa-solid fa-spinner fa-spin mr-1"></i> AI 提取中...</span>
+                        <span v-else><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> AI 智能生成大纲</span>
                     </button>
                 </div>
-                <input type="file" id="pdf-upload" accept="application/pdf" class="hidden" @change="handleFileUpload">
-            </div>
-            
-            <div class="p-4 flex-1 overflow-y-auto">
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">章节大纲 (支持跳转)</h3>
-                <ul v-if="outline.length > 0" class="text-sm space-y-2">
-                    <li v-for="(item, idx) in outline" :key="idx" 
-                        class="cursor-pointer hover:text-blue-600 truncate transition-colors flex items-center" 
-                        :style="{ paddingLeft: ((item.level > 1 ? item.level - 1 : 0) * 14) + 'px' }"
-                        @click="goToPage(item.page)">
-                        <span class="mr-2 text-gray-400 text-xs shrink-0" :class="{'font-bold text-gray-600': item.level===1}">P{{item.page}}</span>
-                        <span class="truncate" :class="{'font-semibold': item.level===1}">{{ item.title }}</span>
-                    </li>
-                </ul>
-                <div v-else class="text-sm text-gray-400 italic">
-                    <div v-if="isUploading"><i class="fas fa-spinner fa-spin mr-1"></i>正在解析文档...</div>
-                    <div v-else-if="isGeneratingOutline"><i class="fas fa-robot fa-spin mr-1"></i>AI 正在推读全文推断大纲...</div>
-                    <div v-else>上传PDF后自动生成完整大纲</div>
+                <div v-else class="text-center text-gray-400 mt-10">
+                    <p>请先打开 PDF 文件</p>
                 </div>
             </div>
         </div>
 
-        <div class="resizer hidden md:block" @mousedown="startDrag('left')"></div>
+        <!-- 拖拽条：左 -->
+        <div class="w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition flex-shrink-0 z-10 relative" @mousedown.prevent="startResize('left')"></div>
 
-        <!-- 中栏：原版PDF渲染区 (高清晰度优化) -->
-        <div class="bg-paper font-lora flex-1 flex flex-col relative overflow-hidden text-lg">
-            <div class="flex-1 overflow-y-auto p-4 md:p-8 relative scroll-smooth bg-gray-100" id="pdf-container">
-                <div v-if="!pdfDoc" class="flex flex-col items-center justify-center h-full text-gray-400">
-                    <i class="fas fa-file-pdf text-6xl mb-4 text-gray-300"></i>
-                    <p class="font-sans">请点击左侧按钮上传 PDF 文件</p>
-                    <p class="text-sm mt-2">支持高清物理像素渲染</p>
+        <!-- ==================== 中栏：PDF 阅读区 ==================== -->
+        <div class="flex-1 flex flex-col relative h-full min-w-[300px]" ref="pdfMiddleContainer">
+            <div class="h-14 border-b bg-white flex justify-between items-center px-4 flex-shrink-0 shadow-sm z-20">
+                <div class="flex items-center gap-4">
+                    <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow transition text-sm font-medium">
+                        <i class="fa-solid fa-file-import mr-1"></i> 打开文献
+                        <input type="file" accept="application/pdf" class="hidden" @change="onFileChange">
+                    </label>
+                    <span class="text-xs text-gray-400" v-if="pdfDoc">共 {{ numPages }} 页 | 当前: {{ currentPage }}</span>
+                    <span class="text-xs text-emerald-500 font-medium" v-if="isExtractingFullText"><i class="fa-solid fa-spinner fa-spin"></i> 正在读取全文上下文...</span>
+                </div>
+                <div class="flex items-center bg-gray-100 rounded-md overflow-hidden border border-gray-200 shadow-inner" v-if="pdfDoc">
+                    <button @click="zoomOut" class="px-3 py-1.5 hover:bg-gray-200 text-gray-600 transition"><i class="fa-solid fa-minus"></i></button>
+                    <span class="px-3 py-1.5 text-sm font-mono bg-white min-w-[60px] text-center">{{ Math.round(scale * 100) }}%</span>
+                    <button @click="zoomIn" class="px-3 py-1.5 hover:bg-gray-200 text-gray-600 transition"><i class="fa-solid fa-plus"></i></button>
+                </div>
+            </div>
+
+            <!-- 取消了无效的 mouseup 绑定，使用全局安全的防抖划词方案 -->
+            <div class="flex-1 overflow-y-auto relative p-4" ref="pdfScrollArea" @scroll="onPdfScroll">
+                <div v-if="!pdfDoc" class="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
+                    <i class="fa-regular fa-file-pdf text-6xl text-gray-300"></i>
+                    <p class="text-lg tracking-wider">本地化处理 · 极致安全 · 不上传文件</p>
                 </div>
                 
-                <div v-for="pageNum in totalPages" :key="pageNum" :id="'page-wrapper-' + pageNum" class="pdf-page-container">
-                    <!-- Canvas 高清渲染 -->
-                    <canvas :id="'page-canvas-' + pageNum" class="block mx-auto"></canvas>
-                    <div :id="'text-layer-' + pageNum" class="textLayer"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 悬浮划线智能菜单 -->
-        <div v-if="popover.show" 
-             class="fixed bg-gray-800 text-white rounded-md shadow-lg flex items-center p-1 space-x-1 z-50 transition-all"
-             :style="{ top: popover.y + 'px', left: popover.x + 'px', transform: 'translate(-50%, -100%)', marginTop: '-8px' }">
-            <button @click="createAnnotation" class="px-3 py-1 hover:bg-gray-700 rounded text-sm text-highlight"><i class="fas fa-highlighter"></i> 批注</button>
-            <button @click="aiTranslate" class="px-3 py-1 hover:bg-gray-700 rounded text-sm"><i class="fas fa-language"></i> 翻译</button>
-            <button @click="aiAsk" class="px-3 py-1 hover:bg-gray-700 rounded text-sm"><i class="fas fa-robot"></i> 答疑</button>
-        </div>
-
-        <div class="resizer hidden md:block" @mousedown="startDrag('right')"></div>
-
-        <!-- 右栏：AI交互与批注 (Markdown 渲染优化) -->
-        <div class="bg-white flex flex-col hidden md:flex shrink-0 transition-all" :style="{ width: rightWidth + 'px' }">
-            <div class="flex border-b text-sm font-medium shrink-0">
-                <button @click="activeTab = 'ai'" :class="activeTab==='ai' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'" class="flex-1 py-3 bg-gray-50 hover:bg-gray-100">全知 AI 助手</button>
-                <button @click="activeTab = 'note'" :class="activeTab==='note' ? 'border-b-2 border-orange-400 text-orange-500' : 'text-gray-500'" class="flex-1 py-3 bg-gray-50 hover:bg-gray-100">我的批注 ({{annotations.length}})</button>
-            </div>
-
-            <div v-show="activeTab === 'ai'" class="flex-1 flex flex-col h-full overflow-hidden">
-                <div class="flex-1 overflow-y-auto p-4 space-y-4 text-sm" id="chat-box">
-                    <div v-for="(msg, i) in aiMessages" :key="i" :class="msg.role === 'user' ? 'text-right' : 'text-left'">
-                        <div class="inline-block p-3 rounded-lg max-w-[90%] shadow-sm text-left"
-                             :class="msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'">
-                            <p v-if="msg.context" class="text-xs opacity-80 border-l-2 border-white/50 pl-2 mb-2 italic line-clamp-3">划线内容: "{{msg.context}}"</p>
-                            <!-- 3. 优化点：AI消息内容使用 markdown-body -->
-                            <div v-html="formatMsg(msg.content)" class="markdown-body leading-relaxed break-words"></div>
+                <div id="pdf-pages-wrapper" class="relative">
+                    <div v-for="page in pages" :key="page.num" 
+                         :id="'page-wrapper-' + page.num"
+                         :data-page-number="page.num"
+                         class="pdf-page-container flex justify-center items-center bg-white transition-all duration-300"
+                         :style="{ width: page.width + 'px', height: page.height + 'px' }">
+                        <canvas :id="'page-canvas-' + page.num" class="absolute top-0 left-0 shadow"></canvas>
+                        <div :id="'page-text-' + page.num" class="textLayer z-10"></div>
+                        <div v-if="page.state === 'loading'" class="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-50">
+                            <i class="fa-solid fa-circle-notch fa-spin text-3xl text-blue-400"></i>
                         </div>
                     </div>
-                    <div v-if="aiLoading" class="text-left"><span class="inline-block p-3 bg-gray-100 rounded-lg text-gray-500 animate-pulse"><i class="fas fa-circle-notch fa-spin"></i> AI 思考中...</span></div>
-                </div>
-                <div class="p-3 border-t bg-gray-50 shrink-0">
-                    <textarea v-model="aiInput" @keydown.enter.prevent="sendAiMessage" placeholder="在此向 AI 提问 (Enter 发送)..." class="w-full bg-white border border-gray-300 rounded p-2 text-sm outline-none focus:border-blue-500 resize-none h-20 shadow-inner"></textarea>
                 </div>
             </div>
 
-            <div v-show="activeTab === 'note'" class="flex-1 overflow-y-auto p-4 space-y-4">
-                <div v-if="annotations.length === 0" class="text-center text-gray-400 text-sm mt-10">暂无批注</div>
-                <div v-for="anno in annotations" :key="anno.id" class="relative group border-l-4 border-highlight bg-orange-50 p-3 rounded-r-md shadow-sm transition-all hover:shadow">
-                    <p class="text-sm font-lora text-gray-700 italic mb-2">"{{ anno.text }}"</p>
-                    <textarea v-model="anno.note" @change="saveData" placeholder="输入批注想法..." class="w-full text-sm bg-white/60 border border-orange-200 rounded p-2 outline-none focus:bg-white resize-none"></textarea>
-                    <button @click="deleteAnnotation(anno.id)" class="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-xs bg-red-100 px-2 py-1 rounded">
-                        <i class="fas fa-trash"></i>
-                    </button>
+            <!-- 注意这里改成了 mousedown.prevent，彻底解决点击菜单导致选区清空消失的 Bug -->
+            <transition name="fade">
+                <div v-if="showFloatingMenu" class="absolute z-50 bg-gray-800 text-white rounded-md shadow-xl flex overflow-hidden text-sm border border-gray-700"
+                     :style="{ top: menuPos.y + 'px', left: menuPos.x + 'px', transform: 'translate(-50%, -120%)' }">
+                    <button @mousedown.prevent="quickAction('翻译')" class="px-4 py-2 hover:bg-blue-600 transition"><i class="fa-solid fa-language mr-1"></i> 翻译</button>
+                    <button @mousedown.prevent="quickAction('答疑')" class="px-4 py-2 border-l border-gray-600 hover:bg-emerald-600 transition"><i class="fa-solid fa-question mr-1"></i> 答疑</button>
+                    <button @mousedown.prevent="addAnnotation" class="px-4 py-2 border-l border-gray-600 hover:bg-amber-600 transition"><i class="fa-solid fa-highlighter mr-1"></i> 批注</button>
                 </div>
-            </div>
+            </transition>
         </div>
 
-        <!-- API 配置 Modal -->
-        <div v-if="showApiModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white w-[420px] rounded-lg shadow-xl p-6 font-sans">
-                <h2 class="text-lg font-bold mb-4">AI 引擎配置</h2>
-                <div class="space-y-4 text-sm">
-                    <div>
-                        <label class="block text-gray-700 mb-1">快捷预设模型</label>
-                        <select v-model="apiConfig.preset" @change="applyPreset" class="w-full border p-2 rounded focus:outline-blue-500 bg-gray-50">
-                            <option value="deepseek">DeepSeek (性价比最高)</option>
-                            <option value="kimi">Moonshot Kimi</option>
-                            <option value="openai">OpenAI (GPT-4o)</option>
-                            <option value="custom">自定义格式</option>
-                        </select>
+        <!-- 拖拽条：右 -->
+        <div class="w-1 cursor-col-resize bg-gray-200 hover:bg-blue-500 transition flex-shrink-0 z-10 relative" @mousedown.prevent="startResize('right')"></div>
+
+        <!-- ==================== 右栏：AI助手与批注 ==================== -->
+        <div :style="{ width: rightWidth + 'px' }" class="flex flex-col bg-white border-l shadow-sm flex-shrink-0 h-full relative">
+            <div class="flex h-14 border-b bg-gray-50 flex-shrink-0">
+                <button @click="activeTab = 'chat'" class="flex-1 flex items-center justify-center gap-2 font-medium transition" :class="activeTab === 'chat' ? 'text-blue-600 bg-white border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-100'">
+                    <i class="fa-solid fa-robot"></i> 全知 AI 助手
+                </button>
+                <button @click="activeTab = 'annotations'" class="flex-1 flex items-center justify-center gap-2 font-medium transition" :class="activeTab === 'annotations' ? 'text-amber-600 bg-white border-b-2 border-amber-600' : 'text-gray-500 hover:bg-gray-100'">
+                    <i class="fa-solid fa-bookmark"></i> 我的批注
+                </button>
+            </div>
+
+            <div v-show="activeTab === 'chat'" class="flex-1 flex flex-col h-full overflow-hidden relative">
+                <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50" ref="chatScrollRef">
+                    <div v-if="messages.length === 0" class="text-center text-gray-400 mt-20">
+                        <i class="fa-regular fa-comments text-4xl mb-3"></i>
+                        <p>选中左侧文本提问，或直接输入</p>
                     </div>
-                    <div><label class="block text-gray-700 mb-1">API Base URL</label><input v-model="apiConfig.baseUrl" type="text" class="w-full border p-2 rounded focus:outline-blue-500"></div>
-                    <div><label class="block text-gray-700 mb-1">Model Name</label><input v-model="apiConfig.model" type="text" class="w-full border p-2 rounded focus:outline-blue-500"></div>
-                    <div><label class="block text-gray-700 mb-1">API Key</label><input v-model="apiConfig.apiKey" type="password" placeholder="sk-..." class="w-full border p-2 rounded focus:outline-blue-500"></div>
+                    <div v-for="(msg, index) in messages" :key="index" class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+                        <div v-if="msg.role === 'user'" class="max-w-[85%] bg-blue-500 text-white rounded-t-xl rounded-bl-xl px-4 py-2.5 shadow-sm text-sm break-words whitespace-pre-wrap">
+                            {{ msg.content }}
+                        </div>
+                        <div v-else class="max-w-[95%] bg-white border shadow-sm rounded-t-xl rounded-br-xl px-4 py-3 text-sm prose prose-sm break-words relative"
+                             :class="msg.isError ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 text-gray-800'">
+                            <div v-html="msg.htmlContent"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="mt-6 flex justify-end space-x-3">
-                    <button @click="showApiModal = false" class="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded">取消</button>
-                    <button @click="saveApiConfig" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">保存配置</button>
+
+                <div class="border-t p-3 bg-white flex flex-col gap-2 relative">
+                    <div class="flex items-end gap-2">
+                        <textarea v-model="inputMsg" @keydown.enter.exact.prevent="sendMessage" rows="2"
+                                  class="flex-1 border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm bg-gray-50"
+                                  placeholder="输入问题... (Enter 发送, Shift+Enter 换行)"></textarea>
+                        
+                        <button v-if="isGenerating" @click="stopGeneration" class="h-[38px] px-3 bg-red-100 text-red-600 border border-red-300 rounded hover:bg-red-200 transition" title="停止生成">
+                            <i class="fa-solid fa-stop"></i>
+                        </button>
+                        <button v-else @click="sendMessage" :disabled="!inputMsg.trim() || isGenerating"
+                                class="h-[38px] px-4 bg-blue-600 text-white rounded shadow-sm hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="flex text-xs text-gray-500 gap-3 items-center px-1">
+                        <label class="flex items-center gap-1 cursor-pointer hover:text-blue-600 transition" title="勾选后，大模型将能阅读并结合论文全文信息进行回答">
+                            <input type="checkbox" v-model="useContext" class="rounded text-blue-600"> 携带全文上下文
+                        </label>
+                        <button class="hover:text-red-500 ml-auto" @click="clearChat"><i class="fa-solid fa-trash-can"></i> 清空对话</button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-show="activeTab === 'annotations'" class="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4">
+                <div v-if="annotations.length === 0" class="text-center text-gray-400 mt-20">
+                    <i class="fa-solid fa-highlighter text-4xl mb-3"></i>
+                    <p>在 PDF 划词后选择"批注"保存高亮内容</p>
+                </div>
+                <div v-for="(anno, idx) in annotations" :key="idx" class="bg-white p-3 rounded-lg shadow-sm border border-amber-200 relative group">
+                    <div class="text-xs text-amber-600 font-bold mb-1 flex justify-between">
+                        <span>P.{{ anno.page }} 引用</span>
+                        <button @click="deleteAnnotation(idx)" class="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-times"></i></button>
+                    </div>
+                    <div class="text-sm border-l-2 border-amber-300 pl-2 text-gray-600 italic mb-2 line-clamp-4 hover:line-clamp-none transition-all">
+                        "{{ anno.quote }}"
+                    </div>
+                    <textarea v-model="anno.note" class="w-full text-sm bg-amber-50 border-none rounded p-2 focus:outline-none focus:ring-1 focus:ring-amber-400 resize-none h-16" placeholder="添加你的思考笔记..."></textarea>
                 </div>
             </div>
         </div>
+
+        <!-- ==================== 模态框：API 设置 ==================== -->
+        <transition name="fade">
+            <div v-if="showSettings" class="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm">
+                <div class="bg-white rounded-xl shadow-2xl w-[450px] overflow-hidden flex flex-col transform transition-all">
+                    <div class="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+                        <h3 class="font-bold text-gray-800"><i class="fa-solid fa-sliders text-blue-500 mr-2"></i> 模型 API 配置</h3>
+                        <button @click="showSettings = false" class="text-gray-400 hover:text-gray-700"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    </div>
+                    <div class="p-6 space-y-4 text-sm">
+                        <div>
+                            <label class="block text-gray-700 font-medium mb-1">快捷预设</label>
+                            <select v-model="settings.preset" @change="applyPreset" class="w-full border rounded-md p-2 bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                                <option value="custom">自定义 (Custom)</option>
+                                <option value="deepseek">DeepSeek 官方</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="kimi">Kimi (Moonshot)</option>
+                                <option value="zhipu">智谱 GLM</option>
+                                <option value="siliconflow">SiliconFlow (硅基流动)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-medium mb-1">Base URL</label>
+                            <input v-model="settings.baseUrl" type="text" class="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-xs" placeholder="https://api.openai.com/v1">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-medium mb-1">Model Name</label>
+                            <input v-model="settings.model" type="text" class="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-xs" placeholder="gpt-4o / deepseek-reasoner">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-medium mb-1">API Key (本地存储，绝对安全)</label>
+                            <input v-model="settings.apiKey" type="password" class="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-xs" placeholder="sk-...">
+                        </div>
+                        <div class="pt-2">
+                            <button @click="saveSettings" class="w-full bg-blue-600 text-white font-bold py-2.5 rounded-md hover:bg-blue-700 shadow transition">
+                                <i class="fa-solid fa-save mr-1"></i> 保存配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </transition>
     </div>
 
+    <!-- 核心逻辑 -->
     <script>
-        const { createApp, ref, reactive, onMounted, nextTick } = Vue;
+        const { createApp, ref, reactive, onMounted, onUnmounted, watch, nextTick, markRaw } = Vue;
 
-        createApp({
+        marked.setOptions({ breaks: true, gfm: true });
+
+        const PRESETS = {
+            deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-reasoner' },
+            openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
+            kimi: { baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+            zhipu: { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4' },
+            siliconflow: { baseUrl: 'https://api.siliconflow.cn/v1', model: 'deepseek-ai/DeepSeek-R1' },
+            custom: { baseUrl: '', model: '' }
+        };
+
+        const app = createApp({
             setup() {
+                // UI & Layout - 【修复点1：重写全局拖拽逻辑，彻底解决事件丢失卡死】
                 const leftWidth = ref(250);
-                const rightWidth = ref(350);
-                let draggingPanel = null;
+                const rightWidth = ref(380);
+                const isResizing = ref(false);
+                const resizeTarget = ref(null);
+                
+                const startResize = (target) => {
+                    isResizing.value = true;
+                    resizeTarget.value = target;
+                    document.body.style.cursor = 'col-resize';
+                    // 动态绑定到 window，无论鼠标在哪都绝对生效
+                    window.addEventListener('mousemove', handleResizeMove);
+                    window.addEventListener('mouseup', stopResize);
+                };
+                
+                const handleResizeMove = (e) => {
+                    if (!isResizing.value) return;
+                    const minWidth = 200, maxWidth = window.innerWidth * 0.4;
+                    if (resizeTarget.value === 'left') {
+                        leftWidth.value = Math.max(minWidth, Math.min(maxWidth, e.clientX));
+                    } else if (resizeTarget.value === 'right') {
+                        rightWidth.value = Math.max(minWidth, Math.min(maxWidth, window.innerWidth - e.clientX));
+                    }
+                };
+                
+                const stopResize = () => {
+                    if (isResizing.value) {
+                        isResizing.value = false;
+                        document.body.style.cursor = '';
+                        window.removeEventListener('mousemove', handleResizeMove);
+                        window.removeEventListener('mouseup', stopResize);
+                    }
+                };
 
+                // Settings
+                const showSettings = ref(false);
+                const settings = reactive({ preset: 'deepseek', baseUrl: PRESETS['deepseek'].baseUrl, model: PRESETS['deepseek'].model, apiKey: '' });
+                const applyPreset = () => {
+                    const p = PRESETS[settings.preset];
+                    if(p) { settings.baseUrl = p.baseUrl; settings.model = p.model; }
+                };
+                const saveSettings = () => {
+                    localStorage.setItem('localReader_settings', JSON.stringify(settings));
+                    showSettings.value = false;
+                };
+
+                // PDF Core & Context
                 const pdfDoc = ref(null);
-                const totalPages = ref(0);
-                const paperTitle = ref('');
-                const outline = ref([]);
-                const isUploading = ref(false);
+                const numPages = ref(0);
+                const currentPage = ref(1);
+                const scale = ref(1.2); 
+                const pages = ref([]); 
+                const pdfScrollArea = ref(null);
+                const pdfMiddleContainer = ref(null);
+                const outlines = ref([]);
                 const isGeneratingOutline = ref(false);
-                const fullDocumentContext = ref('');
+                const fullDocumentText = ref(""); 
+                const isExtractingFullText = ref(false);
 
-                const activeTab = ref('ai');
-                const selectedText = ref('');
-                const popover = reactive({ show: false, x: 0, y: 0 });
-                const annotations = ref([]);
+                let pdfObserver = null;
+                let renderQueue = Promise.resolve();
+                let zoomDebounceTimer = null;
 
-                const showApiModal = ref(false);
-                const aiMessages = ref([{ role: 'assistant', content: '您好！我是您的全知阅读助手。我可以帮您总结论文、翻译划线内容。' }]);
-                const aiInput = ref('');
-                const aiLoading = ref(false);
-
-                const apiConfig = reactive({ preset: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: '' });
-                const presets = {
-                    deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-                    kimi: { baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
-                    openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' }
+                const onPdfScroll = () => {
+                    showFloatingMenu.value = false;
                 };
 
                 onMounted(() => {
-                    const savedApi = localStorage.getItem('paper_agent_api');
-                    if(savedApi) Object.assign(apiConfig, JSON.parse(savedApi));
-                    const savedAnnos = localStorage.getItem('paper_agent_annos');
-                    if(savedAnnos) annotations.value = JSON.parse(savedAnnos);
-
-                    document.addEventListener('selectionchange', handleSelection);
-                    document.addEventListener('mousedown', (e) => {
-                        if (!e.target.closest('#pdf-container') && !e.target.closest('.fixed')) {
-                            popover.show = false;
-                        }
-                    });
+                    const savedSet = localStorage.getItem('localReader_settings');
+                    if (savedSet) Object.assign(settings, JSON.parse(savedSet));
+                    const savedAnnos = localStorage.getItem('localReader_annos');
+                    if (savedAnnos) annotations.value = JSON.parse(savedAnnos);
+                    const savedChat = localStorage.getItem('localReader_chat');
+                    if (savedChat) messages.value = JSON.parse(savedChat);
+                    
+                    document.addEventListener('selectionchange', handleSelectionChange);
                 });
 
-                const startDrag = (panel) => { draggingPanel = panel; document.addEventListener('mousemove', onDrag); document.addEventListener('mouseup', stopDrag); document.body.style.cursor = 'col-resize'; };
-                const onDrag = (e) => {
-                    if (draggingPanel === 'left') leftWidth.value = Math.max(180, Math.min(e.clientX, 400));
-                    if (draggingPanel === 'right') rightWidth.value = Math.max(250, Math.min(window.innerWidth - e.clientX, 600));
+                onUnmounted(() => {
+                    document.removeEventListener('selectionchange', handleSelectionChange);
+                    if (pdfObserver) pdfObserver.disconnect();
+                });
+
+                const extractFullTextInBackground = async () => {
+                    if (!pdfDoc.value) return;
+                    isExtractingFullText.value = true;
+                    let text = "";
+                    const maxPagesToScan = Math.min(pdfDoc.value.numPages, 4000); 
+                    try {
+                        for (let i = 1; i <= maxPagesToScan; i++) {
+                            const page = await pdfDoc.value.getPage(i);
+                            const tc = await page.getTextContent();
+                            const pageStr = tc.items.map(it => it.str).join(' ').trim();
+                            if (pageStr) text += `\n[第${i}页内容]\n${pageStr}`;
+                        }
+                    } catch(e) {}
+                    fullDocumentText.value = text;
+                    isExtractingFullText.value = false;
                 };
-                const stopDrag = () => { document.removeEventListener('mousemove', onDrag); document.removeEventListener('mouseup', stopDrag); document.body.style.cursor = 'default'; };
 
-                const applyPreset = () => { if(presets[apiConfig.preset]) { apiConfig.baseUrl = presets[apiConfig.preset].baseUrl; apiConfig.model = presets[apiConfig.preset].model; } };
-                const saveApiConfig = () => { localStorage.setItem('paper_agent_api', JSON.stringify(apiConfig)); showApiModal.value = false; };
-
-                const triggerUpload = () => document.getElementById('pdf-upload').click();
-                
-                const handleFileUpload = async (e) => {
+                const onFileChange = async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
-                    paperTitle.value = file.name.replace('.pdf', '');
-                    isUploading.value = true;
-                    fullDocumentContext.value = '';
-                    outline.value =[];
+                    pages.value = [];
+                    outlines.value =[];
+                    fullDocumentText.value = "";
+                    if (pdfObserver) pdfObserver.disconnect();
                     
-                    try {
-                        const arrayBuffer = await file.arrayBuffer();
-                        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                        pdfDoc.value = pdf;
-                        totalPages.value = pdf.numPages;
-
-                        await renderAllPagesAndExtractText(pdf);
-
-                        const rawOutline = await pdf.getOutline();
-                        const parsedOutline = await parseOutlineWithPages(rawOutline, pdf, 1);
-                        
-                        if (parsedOutline && parsedOutline.length > 0) {
-                            outline.value = parsedOutline;
-                        } else if (apiConfig.apiKey) {
-                            generateOutlineByAI();
-                        }
-                    } catch (error) {
-                        alert("解析失败: " + error.message);
-                    } finally {
-                        isUploading.value = false;
-                    }
-                };
-
-                const parseOutlineWithPages = async (items, pdf, level) => {
-                    if (!items || items.length === 0) return [];
-                    let result =[];
-                    for (let item of items) {
-                        let pageNum = 1;
+                    const fileReader = new FileReader();
+                    fileReader.onload = async function() {
                         try {
-                            let dest = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest;
-                            if (dest) pageNum = (await pdf.getPageIndex(dest[0])) + 1;
-                        } catch(e) {}
-                        result.push({ title: item.title, page: pageNum, level: level });
-                        if (item.items && item.items.length > 0) result = result.concat(await parseOutlineWithPages(item.items, pdf, level + 1));
-                    }
-                    return result;
+                            const loadingTask = pdfjsLib.getDocument(new Uint8Array(this.result));
+                            pdfDoc.value = markRaw(await loadingTask.promise);
+                            numPages.value = pdfDoc.value.numPages;
+                            
+                            const firstPage = await pdfDoc.value.getPage(1);
+                            const viewport = firstPage.getViewport({ scale: scale.value });
+                            
+                            for (let i = 1; i <= numPages.value; i++) {
+                                pages.value.push({ num: i, width: viewport.width, height: viewport.height, state: 'init' });
+                            }
+                            
+                            const outline = await pdfDoc.value.getOutline();
+                            if (outline && outline.length > 0) {
+                                parseOutline(outline, 0);
+                            }
+                            
+                            extractFullTextInBackground().then(() => {
+                                if ((!outline || outline.length === 0) && settings.apiKey) {
+                                    generateAIOutline(true);
+                                }
+                            });
+
+                            nextTick(() => { initIntersectionObserver(); });
+                        } catch (err) {
+                            alert("PDF 解析失败: " + err.message);
+                        }
+                    };
+                    fileReader.readAsArrayBuffer(file);
                 };
 
-                // ================= 优化点：高清 PDF 渲染 =================
-                const renderAllPagesAndExtractText = async (pdf) => {
-                    let extractedText = '';
-                    const dpr = window.devicePixelRatio || 1; // 获取设备像素比
-
-                    for (let num = 1; num <= pdf.numPages; num++) {
-                        const page = await pdf.getPage(num);
-                        const baseScale = 1.5; // 基础缩放因子
-                        const viewport = page.getViewport({ scale: baseScale });
-
-                        const wrapper = document.getElementById(`page-wrapper-${num}`);
-                        if(!wrapper) continue;
-                        wrapper.style.width = viewport.width + 'px';
-                        wrapper.style.height = viewport.height + 'px';
-
-                        const canvas = document.getElementById(`page-canvas-${num}`);
-                        const context = canvas.getContext('2d', { alpha: false }); // 优化渲染性能
-
-                        // 核心：设置 Canvas 物理像素尺寸
-                        canvas.width = Math.floor(viewport.width * dpr);
-                        canvas.height = Math.floor(viewport.height * dpr);
-                        
-                        // 核心：设置 Canvas CSS 尺寸
-                        canvas.style.width = viewport.width + 'px';
-                        canvas.style.height = viewport.height + 'px';
-
-                        // 核心：缩放绘图上下文以匹配物理像素
-                        context.scale(dpr, dpr);
-
-                        await page.render({ canvasContext: context, viewport: viewport }).promise;
-
-                        const textContent = await page.getTextContent();
-                        const textLayerDiv = document.getElementById(`text-layer-${num}`);
-                        textLayerDiv.innerHTML = ''; 
-                        textLayerDiv.style.width = viewport.width + 'px';
-                        textLayerDiv.style.height = viewport.height + 'px';
-                        textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
-
-                        await pdfjsLib.renderTextLayer({
-                            textContentSource: textContent,
-                            container: textLayerDiv,
-                            viewport: viewport,
-                            textDivs:[]
-                        }).promise;
-
-                        const pageString = textContent.items.map(s => s.str).join(' ');
-                        extractedText += `\n\n--- [Page ${num}] ---\n${pageString}`;
-                    }
-                    fullDocumentContext.value = extractedText;
+                const parseOutline = (items, depth) => {
+                    items.forEach(item => {
+                        outlines.value.push({ title: item.title, destPage: item.dest, depth });
+                        if (item.items && item.items.length > 0) parseOutline(item.items, depth + 1);
+                    });
                 };
 
-                const generateOutlineByAI = async () => {
-                    isGeneratingOutline.value = true;
+                const initIntersectionObserver = () => {
+                    if (pdfObserver) pdfObserver.disconnect();
+                    const options = { root: pdfScrollArea.value, rootMargin: '300px 0px', threshold: [0, 0.5] };
+                    
+                    pdfObserver = new IntersectionObserver((entries) => {
+                        let maxRatio = 0;
+                        let visiblePageNum = currentPage.value;
+                        entries.forEach(entry => {
+                            const num = parseInt(entry.target.getAttribute('data-page-number'));
+                            const pageData = pages.value[num - 1];
+                            if (entry.isIntersecting && pageData.state === 'init') {
+                                pageData.state = 'loading';
+                                queueRenderPage(num);
+                            }
+                            if (entry.intersectionRatio > maxRatio) {
+                                maxRatio = entry.intersectionRatio;
+                                visiblePageNum = num;
+                            }
+                        });
+                        if (maxRatio > 0 && visiblePageNum !== currentPage.value) {
+                            currentPage.value = visiblePageNum;
+                        }
+                    }, options);
+                    document.querySelectorAll('.pdf-page-container').forEach(el => pdfObserver.observe(el));
+                };
+
+                const queueRenderPage = (num) => {
+                    renderQueue = renderQueue.then(() => renderPage(num)).catch(console.error);
+                };
+
+                const renderPage = async (num) => {
+                    if(!pdfDoc.value) return;
+                    const pageData = pages.value[num - 1];
                     try {
-                        const introText = fullDocumentContext.value.substring(0, 100000); 
-                        const prompt = `分析以下论文内容，提取章节大纲，以 JSON 数组格式返回：[{"title": "...", "page": 1, "level": 1}]。内容：\n${introText}`;
-                        const res = await callAI(prompt, "你是一个只输出 JSON 数组的机器人。");
-                        let cleanJson = res.replace(/```json/gi, '').replace(/```/g, '').trim();
-                        const jsonMatch = cleanJson.match(/\[[\s\S]*\]/);
-                        if (jsonMatch) outline.value = JSON.parse(jsonMatch[0]);
+                        const page = await pdfDoc.value.getPage(num);
+                        const viewport = page.getViewport({ scale: scale.value });
+                        
+                        pageData.width = viewport.width;
+                        pageData.height = viewport.height;
+                        await nextTick();
+                        
+                        const canvas = document.getElementById(`page-canvas-${num}`);
+                        if(!canvas) return; 
+                        const context = canvas.getContext('2d', { alpha: false });
+                        const outputScale = window.devicePixelRatio || 1;
+                        
+                        canvas.width = Math.floor(viewport.width * outputScale);
+                        canvas.height = Math.floor(viewport.height * outputScale);
+                        canvas.style.width = viewport.width + "px";
+                        canvas.style.height = viewport.height + "px";
+                        
+                        const transform = outputScale !== 1 ?[outputScale, 0, 0, outputScale, 0, 0] : null;
+
+                        await page.render({ canvasContext: context, transform: transform, viewport: viewport }).promise;
+
+                        const textLayerDiv = document.getElementById(`page-text-${num}`);
+                        textLayerDiv.innerHTML = ''; 
+                        textLayerDiv.style.width = viewport.width + "px";
+                        textLayerDiv.style.height = viewport.height + "px";
+                        textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
+                        
+                        const textContent = await page.getTextContent();
+                        await pdfjsLib.renderTextLayer({
+                            textContentSource: textContent, container: textLayerDiv, viewport: viewport, textDivs:[]
+                        }).promise;
+                        
+                        pageData.state = 'rendered';
                     } catch (e) {
-                        outline.value =[{ title: '大纲生成失败', page: 1, level: 1 }];
+                        pageData.state = 'init'; 
+                    }
+                };
+
+                const handleZoom = (newScale) => {
+                    scale.value = Math.max(0.5, Math.min(3.0, newScale));
+                    clearTimeout(zoomDebounceTimer);
+                    zoomDebounceTimer = setTimeout(() => {
+                        pages.value.forEach(p => { p.state = 'init'; });
+                        document.querySelectorAll('.textLayer').forEach(el => el.innerHTML = '');
+                        const estimatedW = 800 * scale.value; 
+                        pages.value.forEach(p => { p.width = estimatedW; p.height = estimatedW * 1.414; });
+                        if (pdfObserver) pdfObserver.disconnect();
+                        nextTick(() => initIntersectionObserver());
+                    }, 500);
+                };
+                const zoomIn = () => handleZoom(scale.value + 0.2);
+                const zoomOut = () => handleZoom(scale.value - 0.2);
+
+                const scrollToPage = async (dest) => {
+                    let destPageNum = dest;
+                    if (typeof dest === 'object') {
+                        const pageIdx = await pdfDoc.value.getPageIndex(dest[0]);
+                        destPageNum = pageIdx + 1;
+                    }
+                    const el = document.getElementById(`page-wrapper-${destPageNum}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                };
+
+                // Selection Menu - 【修复点2：防抖机制 + DOM范围精准判断，彻底根除弹窗闪退】
+                const showFloatingMenu = ref(false);
+                const menuPos = reactive({ x: 0, y: 0 });
+                const selectedText = ref("");
+                let selectionTimeout = null;
+
+                const handleSelectionChange = () => {
+                    if (isResizing.value) return;
+                    
+                    if (selectionTimeout) clearTimeout(selectionTimeout);
+                    
+                    // 延迟 200ms 计算，防止用户在划词拖动过程中高频触发乱跳
+                    selectionTimeout = setTimeout(() => {
+                        const selection = window.getSelection();
+                        const text = selection ? selection.toString().trim() : '';
+                        
+                        if (!text) {
+                            showFloatingMenu.value = false;
+                            return;
+                        }
+                        
+                        if (!pdfMiddleContainer.value || !pdfScrollArea.value) return;
+                        
+                        // 确保选区节点有效且位于 PDF 阅读区内部
+                        let node = selection.anchorNode;
+                        if (node && node.nodeType === 3) node = node.parentNode;
+                        if (!node || !pdfScrollArea.value.contains(node)) {
+                            return;
+                        }
+
+                        selectedText.value = text;
+                        try {
+                            const range = selection.getRangeAt(0);
+                            const rect = range.getBoundingClientRect();
+                            
+                            // 忽略拖拽过程中的无效高亮区 (某些浏览器Bug)
+                            if (rect.width === 0 && rect.height === 0) return;
+
+                            const containerRect = pdfMiddleContainer.value.getBoundingClientRect();
+                            menuPos.x = rect.left + rect.width / 2 - containerRect.left;
+                            menuPos.y = rect.top - containerRect.top;
+                            showFloatingMenu.value = true;
+                        } catch (e) {
+                            console.error("弹窗定位失败:", e);
+                        }
+                    }, 200); 
+                };
+
+                // Right Panel
+                const activeTab = ref('chat');
+                const messages = ref([]);
+                const inputMsg = ref("");
+                const isGenerating = ref(false);
+                const useContext = ref(true); 
+                const chatScrollRef = ref(null);
+                const abortController = ref(null);
+                
+                const annotations = ref([]);
+                watch(annotations, (val) => localStorage.setItem('localReader_annos', JSON.stringify(val)), { deep: true });
+                watch(messages, (val) => localStorage.setItem('localReader_chat', JSON.stringify(val)), { deep: true });
+
+                const addAnnotation = () => {
+                    annotations.value.unshift({ page: currentPage.value, quote: selectedText.value, note: '' });
+                    activeTab.value = 'annotations';
+                    showFloatingMenu.value = false;
+                };
+                const deleteAnnotation = (idx) => annotations.value.splice(idx, 1);
+                const clearChat = () => messages.value =[];
+
+                const scrollToBottom = () => {
+                    nextTick(() => {
+                        if (chatScrollRef.value) chatScrollRef.value.scrollTop = chatScrollRef.value.scrollHeight;
+                    });
+                };
+
+                // 统一菜单操作触发逻辑，完全移除了 removeAllRanges
+                const quickAction = (action) => {
+                    activeTab.value = 'chat';
+                    let prompt = "";
+                    if (action === '翻译') prompt = `请将以下学术文献内容翻译为流畅的中文：\n\n"${selectedText.value}"`;
+                    if (action === '答疑') prompt = `请深度解析这段学术文本，用简要易懂的方式向我解释它的核心概念和目的：\n\n"${selectedText.value}"`;
+                    showFloatingMenu.value = false;
+                    sendAIRequest(prompt);
+                };
+
+                const generateAIOutline = async (isAuto = false) => {
+                    if (!settings.apiKey) {
+                        if (!isAuto) {
+                            alert("请先点击左上角齿轮图标配置 API Key");
+                            showSettings.value = true;
+                        }
+                        return;
+                    }
+                    if (!fullDocumentText.value.trim()) {
+                        if (!isAuto) alert("尚未提取到文献文本，可能是图片型 PDF，无法生成大纲。");
+                        return;
+                    }
+
+                    isGeneratingOutline.value = true;
+                    const sysPrompt = `你是一个专业学术文献处理助手。
+任务：根据提供的文档文本提取出完整的章节大纲。
+重要策略：长文档通常在前15页内包含"目录(Table of Contents)"。请优先寻找目录页并将其转化为JSON。如果没有目录页，再根据正文中的各级标题进行推断。
+输出规则：
+1. 必须且只能返回纯粹的JSON数组格式，绝不可包裹 \`\`\`json 等额外字符！
+2. 数组结构示例：[{"title":"1 引言","destPage":1,"depth":0}, {"title":"1.1 背景","destPage":1,"depth":1}]
+3. depth(层级): 0=一级标题，1=二级标题，2=三级标题。the first level title must be bold;
+4. destPage(页码): 尽可能填写准确的整数数字。`;
+                    const reqPrompt = `请提取大纲：\n${fullDocumentText.value.substring(0, 1500000)}`;
+
+                    try {
+                        const response = await fetch(`${settings.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${settings.apiKey}` },
+                            body: JSON.stringify({
+                                model: settings.model,
+                                messages:[ { role: 'system', content: sysPrompt }, { role: 'user', content: reqPrompt } ],
+                                stream: false, temperature: 0.1
+                            })
+                        });
+
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const data = await response.json();
+                        let content = data.choices[0].message.content || "";
+                        content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+                        
+                        const startIdx = content.indexOf('[');
+                        let endIdx = content.lastIndexOf(']');
+                        
+                        if (startIdx !== -1) {
+                            let jsonStr = content.substring(startIdx);
+                            if (endIdx === -1 || endIdx < startIdx) {
+                                const lastBrace = jsonStr.lastIndexOf('}');
+                                jsonStr = (lastBrace !== -1) ? jsonStr.substring(0, lastBrace + 1) + ']' : jsonStr + '}]';
+                            } else {
+                                jsonStr = content.substring(startIdx, endIdx + 1);
+                            }
+                            outlines.value = JSON.parse(jsonStr);
+                        } else {
+                            throw new Error("模型未返回有效的 JSON 数组格式。");
+                        }
+                    } catch (e) {
+                        if (!isAuto) alert("AI 大纲生成失败: \n" + e.message);
                     } finally {
                         isGeneratingOutline.value = false;
                     }
                 };
-
-                const goToPage = (pageNum) => {
-                    const el = document.getElementById(`page-wrapper-${pageNum}`);
-                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                const sendMessage = () => {
+                    if (!inputMsg.value.trim() || isGenerating.value) return;
+                    const text = inputMsg.value;
+                    inputMsg.value = "";
+                    sendAIRequest(text);
                 };
 
-                const handleSelection = () => {
-                    setTimeout(() => {
-                        const selection = window.getSelection();
-                        const text = selection.toString().trim();
-                        if (text.length > 0 && selection.anchorNode && document.getElementById('pdf-container').contains(selection.anchorNode)) {
-                            selectedText.value = text;
-                            const range = selection.getRangeAt(0);
-                            const rect = range.getBoundingClientRect(); 
-                            popover.x = rect.left + (rect.width / 2);
-                            popover.y = rect.top;
-                            popover.show = true;
-                        } else { popover.show = false; }
-                    }, 50);
-                };
+                const parseAndRender = (rawText) => {
+                    let text = rawText || "";
+                    text = text.replace(/<think>[\s\S]*?<\/think>/g, '');
+                    text = text.replace(/<think>[\s\S]*$/g, ''); 
+                    
+                    const dCount = (text.match(/\$\$/g) ||[]).length;
+                    if (dCount % 2 !== 0) text += '\n$$';
+                    
+                    const sCount = (text.match(/(?<!\$)\$(?!\$)/g) ||[]).length;
+                    if (sCount % 2 !== 0) text += '$';
 
-                const createAnnotation = () => { annotations.value.push({ id: Date.now(), text: selectedText.value, note: '' }); activeTab.value = 'note'; popover.show = false; window.getSelection().removeAllRanges(); saveData(); };
-                const deleteAnnotation = (id) => { annotations.value = annotations.value.filter(a => a.id !== id); saveData(); };
-                const saveData = () => localStorage.setItem('paper_agent_annos', JSON.stringify(annotations.value));
-
-                const scrollToBottom = () => nextTick(() => { const box = document.getElementById('chat-box'); if(box) box.scrollTop = box.scrollHeight; });
-
-                // ================= 优化点：使用 marked.js 渲染 Markdown =================
-                const formatMsg = (text) => {
-                    if (!text) return "";
-                    // marked.parse 渲染 markdown
-                    return marked.parse(text);
-                };
-
-                const callAI = async (prompt, systemRole = "你是一个专业的学术论文助手。") => {
-                    if (!apiConfig.apiKey) { alert("请配置 API Key！"); showApiModal.value = true; return ""; }
-                    let systemContent = systemRole;
-                    if (fullDocumentContext.value && systemRole.includes("学术")) {
-                        systemContent += `\n\n【论文参考全文】：\n${fullDocumentContext.value.substring(0, 40000)}`;
-                    }
-                    const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
-                        body: JSON.stringify({
-                            model: apiConfig.model,
-                            messages:[ { role: 'system', content: systemContent }, { role: 'user', content: prompt } ],
-                            temperature: 0.1
-                        })
+                    const latexBlocks =[];
+                    text = text.replace(/\\\[([\s\S]+?)\\\]/g, (match, code) => {
+                        latexBlocks.push({ type: 'block', code });
+                        return `BLOCKLATEXPLACEHOLDER${latexBlocks.length - 1}END`;
                     });
-                    const data = await response.json();
-                    return data.choices[0].message.content;
+                    text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, code) => {
+                        latexBlocks.push({ type: 'block', code });
+                        return `BLOCKLATEXPLACEHOLDER${latexBlocks.length - 1}END`;
+                    });
+                    text = text.replace(/\\\(([\s\S]+?)\\\)/g, (match, code) => {
+                        latexBlocks.push({ type: 'inline', code });
+                        return `INLINELATEXPLACEHOLDER${latexBlocks.length - 1}END`;
+                    });
+                    text = text.replace(/(?<!\$)\$([^\$]+?)\$(?!\$)/g, (match, code) => {
+                        latexBlocks.push({ type: 'inline', code });
+                        return `INLINELATEXPLACEHOLDER${latexBlocks.length - 1}END`;
+                    });
+
+                    let html = marked.parse(text);
+
+                    latexBlocks.forEach((item, index) => {
+                        const placeholder = item.type === 'block' ? `BLOCKLATEXPLACEHOLDER${index}END` : `INLINELATEXPLACEHOLDER${index}END`;
+                        try {
+                            const rendered = katex.renderToString(item.code, { displayMode: item.type === 'block', throwOnError: false });
+                            html = html.replace(placeholder, rendered);
+                        } catch (e) {
+                            html = html.replace(placeholder, `<span class="text-red-500">[公式渲染错误]</span>`);
+                        }
+                    });
+                    return html;
                 };
 
-                const aiTranslate = async () => {
-                    const text = selectedText.value;
-                    popover.show = false; activeTab.value = 'ai';
-                    aiMessages.value.push({ role: 'user', content: '请翻译划线内容。', context: text });
-                    aiLoading.value = true; scrollToBottom();
+                const sendAIRequest = async (prompt) => {
+                    if (!settings.apiKey) {
+                        showSettings.value = true;
+                        messages.value.push({ role: 'system', content: '', htmlContent: '<b>请先配置 API Key</b>', isError: true });
+                        scrollToBottom();
+                        return;
+                    }
+
+                    messages.value.push({ role: 'user', content: prompt });
+                    let sysPrompt = "你是一个专业学术助手。请使用专业且通俗易懂的中文回答问题。必须使用标准的 LaTeX 格式输出数学公式（行内公式使用 $...$ 或 \\(...\\)，块级公式使用 $$...$$ 或 \\[...\\]）。直接给出答案，无需输出任何思考过程或开场白。";
+                    
+                    if (useContext.value && fullDocumentText.value) {
+                        sysPrompt += `\n\n【当前论文核心全文内容提供如下，请结合回答】：\n---开始---\n${fullDocumentText.value.substring(0, 300000)}\n---结束---`;
+                    }
+
+                    const aiMessageIndex = messages.value.length;
+                    messages.value.push({ role: 'assistant', rawContent: '', htmlContent: '<i class="fa-solid fa-circle-notch fa-spin text-gray-400"></i> AI 查阅文献与思考中...', isError: false });
+                    scrollToBottom();
+                    
+                    isGenerating.value = true;
+                    abortController.value = new AbortController();
+
                     try {
-                        const reply = await callAI(`翻译以下学术片段为中文：\n"${text}"`);
-                        aiMessages.value.push({ role: 'assistant', content: reply });
-                    } catch (e) { aiMessages.value.push({ role: 'assistant', content: '翻译失败。' }); }
-                    aiLoading.value = false; scrollToBottom();
+                        const response = await fetch(`${settings.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${settings.apiKey}` },
+                            body: JSON.stringify({
+                                model: settings.model,
+                                messages:[{ role: 'system', content: sysPrompt }, { role: 'user', content: prompt }],
+                                stream: true, temperature: 0.3
+                            }),
+                            signal: abortController.value.signal
+                        });
+
+                        if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder('utf-8');
+                        let done = false;
+                        let rawStr = "";
+                        let renderTimeout = null;
+                        
+                        const debouncedRender = () => {
+                            if (renderTimeout) return;
+                            renderTimeout = setTimeout(() => {
+                                messages.value[aiMessageIndex].htmlContent = parseAndRender(rawStr);
+                                scrollToBottom();
+                                renderTimeout = null;
+                            }, 100);
+                        };
+
+                        while (!done) {
+                            const { value, done: readerDone } = await reader.read();
+                            done = readerDone;
+                            if (value) {
+                                const chunk = decoder.decode(value, { stream: true });
+                                const lines = chunk.split('\n').filter(line => line.trim());
+                                for (const line of lines) {
+                                    if (line === 'data: [DONE]') continue;
+                                    if (line.startsWith('data: ')) {
+                                        try {
+                                            const data = JSON.parse(line.substring(6));
+                                            const delta = data.choices[0].delta;
+                                            if (delta.reasoning_content) {
+                                                continue; 
+                                            } else if (delta.content) {
+                                                rawStr += delta.content;
+                                            }
+                                            debouncedRender();
+                                        } catch (e) {}
+                                    }
+                                }
+                            }
+                        }
+                        if (renderTimeout) clearTimeout(renderTimeout);
+                        messages.value[aiMessageIndex].htmlContent = parseAndRender(rawStr);
+                        messages.value[aiMessageIndex].rawContent = rawStr;
+                        scrollToBottom();
+                    } catch (err) {
+                        if (err.name === 'AbortError') {
+                            messages.value[aiMessageIndex].htmlContent += '<br><span class="text-orange-500 text-xs">[用户终止生成]</span>';
+                        } else {
+                            messages.value[aiMessageIndex].isError = true;
+                            messages.value[aiMessageIndex].htmlContent = `<b>网络/API请求出错：</b><br>${err.message}`;
+                        }
+                        scrollToBottom();
+                    } finally {
+                        isGenerating.value = false;
+                        abortController.value = null;
+                    }
                 };
 
-                const aiAsk = async () => {
-                    const text = selectedText.value;
-                    popover.show = false; activeTab.value = 'ai';
-                    aiMessages.value.push({ role: 'user', content: '请详细解释这段内容。', context: text });
-                    aiLoading.value = true; scrollToBottom();
-                    try {
-                        const reply = await callAI(`结合全文详细解释以下片段：\n"${text}"`);
-                        aiMessages.value.push({ role: 'assistant', content: reply });
-                    } catch (e) { aiMessages.value.push({ role: 'assistant', content: '请求失败。' }); }
-                    aiLoading.value = false; scrollToBottom();
-                };
+                const stopGeneration = () => { if (abortController.value) abortController.value.abort(); };
 
-                const sendAiMessage = async () => {
-                    if (!aiInput.value.trim()) return;
-                    const msg = aiInput.value; aiInput.value = '';
-                    aiMessages.value.push({ role: 'user', content: msg });
-                    aiLoading.value = true; scrollToBottom();
-                    try {
-                        const reply = await callAI(`用户提问：${msg}`);
-                        aiMessages.value.push({ role: 'assistant', content: reply });
-                    } catch (e) { aiMessages.value.push({ role: 'assistant', content: '请求失败。' }); }
-                    aiLoading.value = false; scrollToBottom();
-                };
-
+                // 【修复点3：确保所有需要的函数和引用被正确暴露】
                 return {
-                    leftWidth, rightWidth, startDrag,
-                    pdfDoc, totalPages, paperTitle, outline, isUploading, isGeneratingOutline,
-                    triggerUpload, handleFileUpload, goToPage,
-                    activeTab, selectedText, popover, annotations, createAnnotation, deleteAnnotation, saveData,
-                    showApiModal, apiConfig, applyPreset, saveApiConfig,
-                    aiMessages, aiInput, aiLoading, aiTranslate, aiAsk, sendAiMessage, formatMsg
+                    leftWidth, rightWidth, startResize, showSettings, settings, applyPreset, saveSettings,
+                    pdfDoc, numPages, currentPage, scale, pages, pdfScrollArea, pdfMiddleContainer, zoomIn, zoomOut, onFileChange, scrollToPage, outlines,
+                    showFloatingMenu, menuPos, selectedText, quickAction, addAnnotation, generateAIOutline, isGeneratingOutline, isExtractingFullText,
+                    activeTab, annotations, deleteAnnotation, messages, inputMsg, isGenerating, useContext, chatScrollRef, sendMessage, clearChat, stopGeneration,
+                    onPdfScroll
                 };
             }
-        }).mount('#app');
+        });
+        app.mount('#app');
     </script>
 </body>
 </html>
