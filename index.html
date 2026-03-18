@@ -154,9 +154,17 @@
 
             <div v-show="activeTab === 'chat'" class="flex-1 flex flex-col h-full overflow-hidden relative">
                 <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50" ref="chatScrollRef">
-                    <div v-if="messages.length === 0" class="text-center text-gray-400 mt-20">
+                    <div v-if="messages.length === 0" class="text-center text-gray-400 mt-20 flex flex-col items-center">
                         <i class="fa-regular fa-comments text-4xl mb-3"></i>
                         <p>选中左侧文本提问，或直接输入</p>
+                        
+                        <!-- 👇 新增的 AI 全文总结按钮 -->
+                        <button v-if="pdfDoc" @click="generateSummary" :disabled="isExtractingFullText"
+                                class="mt-8 px-6 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-full hover:shadow-lg hover:scale-105 transition-all duration-300 text-sm font-medium disabled:opacity-50 disabled:hover:scale-100">
+                            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> 
+                            <span v-if="isExtractingFullText">正在读取全文，请稍候...</span>
+                            <span v-else>✨ AI 自动总结全文</span>
+                        </button>
                     </div>
                     <div v-for="(msg, index) in messages" :key="index" class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
                         <div v-if="msg.role === 'user'" class="max-w-[85%] bg-blue-500 text-white rounded-t-xl rounded-bl-xl px-4 py-2.5 shadow-sm text-sm break-words whitespace-pre-wrap">
@@ -805,6 +813,38 @@
                 };
 
                 const stopGeneration = () => { if (abortController.value) abortController.value.abort(); };
+                // 新增：结构化全文总结方法
+                const generateSummary = () => {
+                    if (!settings.apiKey) {
+                        alert("请先点击左上角齿轮配置 API Key");
+                        showSettings.value = true;
+                        return;
+                    }
+                    if (isExtractingFullText.value) {
+                        alert("正在为您提取文献全文，请稍候几秒钟再试...");
+                        return;
+                    }
+                    if (!fullDocumentText.value.trim()) {
+                        alert("未能提取到文献文本，可能为纯图片扫描版 PDF，无法进行总结。");
+                        return;
+                    }
+                    
+                    // 自动切换到聊天面板
+                    activeTab.value = 'chat'; 
+                    
+                    // 构造高质量的结构化 Prompt（提示词）
+                    const prompt = `请根据你所获取到的文献全文上下文，按照以下四个模块为这篇论文生成一份详尽、专业的结构化总结：
+
+1. **研究背景与引言 (Introduction)**：本文试图解决什么痛点或科学问题？
+2. **核心研究方法 (Methods)**：作者采用了什么核心技术、模型或实验方案？
+3. **主要结果与结论 (Results & Conclusion)**：论文取得了什么关键发现或性能突破？
+4. **讨论与启发 (Discussion & Limitations)**：该研究有什么实际启发？是否提到了局限性？
+
+请直接输出排版优美的 Markdown 内容，无需啰嗦的开场白或结尾。`;
+
+                    // 调用已有的发送方法（此方法会自动携带全文上下文）
+                    sendAIRequest(prompt);
+                };
 
                 // 【修复点3：确保所有需要的函数和引用被正确暴露】
                 return {
@@ -812,7 +852,7 @@
                     pdfDoc, numPages, currentPage, scale, pages, pdfScrollArea, pdfMiddleContainer, zoomIn, zoomOut, onFileChange, scrollToPage, outlines,
                     showFloatingMenu, menuPos, selectedText, quickAction, addAnnotation, generateAIOutline, isGeneratingOutline, isExtractingFullText,
                     activeTab, annotations, deleteAnnotation, messages, inputMsg, isGenerating, useContext, chatScrollRef, sendMessage, clearChat, stopGeneration,
-                    onPdfScroll
+                    onPdfScroll, generateSummary
                 };
             }
         });
